@@ -73,7 +73,13 @@ class SequenceTrainer:
         ordering = ordering.to(self.device)
         padding_mask = padding_mask.to(self.device)
 
+
+
         action_target = torch.clone(actions)
+
+        #print(dones)
+
+
 
         _, action_preds, _ = self.model.forward(
             states,
@@ -85,26 +91,50 @@ class SequenceTrainer:
             padding_mask=padding_mask,
         )
 
+       
+       
+        #for name, param in self.model.named_parameters():
+        #        if param.grad is not None:
+        #            print(f"Max gradient before clipping for {name}: {torch.abs(param.grad).max()}")
+        #print("==========after= backward =================")
         loss, nll, entropy = loss_fn(
             action_preds,  # a_hat_dist
             action_target,
             padding_mask,
             self.model.temperature().detach(),  # no gradient taken here
         )
+
+
+       
         self.optimizer.zero_grad()
-        loss.backward()
+        #loss = torch.tensor([2.0], requires_grad=True)
+       
+
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.25)
+        loss.backward()
         self.optimizer.step()
+        
+        #print(loss.item())
+        #for name, param in self.model.named_parameters():
+        #    if param.grad is not None:
+        #        print(f"Max gradient After clipping for {name}: {torch.abs(param.grad).max()}")
+      
+        
 
         self.log_temperature_optimizer.zero_grad()
         temperature_loss = (
             self.model.temperature() * (entropy - self.model.target_entropy).detach()
         )
         temperature_loss.backward()
+        
         self.log_temperature_optimizer.step()
+
+        
 
         if self.scheduler is not None:
             self.scheduler.step()
+
+       
 
         return (
             loss.detach().cpu().item(),

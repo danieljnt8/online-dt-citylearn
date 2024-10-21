@@ -66,6 +66,8 @@ class SquashedNormal(pyd.transformed_distribution.TransformedDistribution):
     def __init__(self, loc, std):
         self.loc = loc
         self.std = std
+
+       
         self.base_dist = pyd.Normal(loc, std)
 
         transforms = [TanhTransform()]
@@ -82,8 +84,12 @@ class SquashedNormal(pyd.transformed_distribution.TransformedDistribution):
         # sample from the distribution and then compute
         # the empirical entropy:
         x = self.rsample((N,))
+        #print(x.shape)
+        #print(x)
+    
         log_p = self.log_prob(x)
-
+        #print(log_p.shape)
+        #print(log_p)
         # log_p: (batch_size, context_len, action_dim),
         return -log_p.mean(axis=0).sum(axis=2)
 
@@ -91,7 +97,9 @@ class SquashedNormal(pyd.transformed_distribution.TransformedDistribution):
         # log_prob(x): (batch_size, context_len, action_dim)
         # sum up along the action dimensions
         # Return tensor shape: (batch_size, context_len)
+        #print(self.log_prob(x).sum(axis=2).shape)
         return self.log_prob(x).sum(axis=2)
+    
 
 
 class DiagGaussianActor(nn.Module):
@@ -212,10 +220,18 @@ class DecisionTransformer(TrajectoryModel):
             # attention mask for GPT: 1 if can be attended to, 0 if not
             padding_mask = torch.ones((batch_size, seq_length), dtype=torch.long)
 
+        
         # embed each modality with a different head
         state_embeddings = self.embed_state(states)
         action_embeddings = self.embed_action(actions)
         returns_embeddings = self.embed_return(returns_to_go)
+       
+        #print("======================")
+        #print(self.embed_state.weight)
+        #print(self.embed_state.bias)
+
+        #print("##################")
+        #print(self.embed_state(torch.ones(10,24,44).to(states.device)))
 
         if self.ordering:
             order_embeddings = self.embed_ordering(timesteps)
@@ -235,6 +251,7 @@ class DecisionTransformer(TrajectoryModel):
             .permute(0, 2, 1, 3)
             .reshape(batch_size, 3 * seq_length, self.hidden_size)
         )
+        
         stacked_inputs = self.embed_ln(stacked_inputs)
 
         # to make the attention mask fit the stacked inputs, have to stack it as well
@@ -244,6 +261,8 @@ class DecisionTransformer(TrajectoryModel):
             .reshape(batch_size, 3 * seq_length)
         )
 
+        
+
         # we feed in the input embeddings (not word indices as in NLP) to the model
         transformer_outputs = self.transformer(
             inputs_embeds=stacked_inputs,
@@ -251,9 +270,13 @@ class DecisionTransformer(TrajectoryModel):
         )
         x = transformer_outputs["last_hidden_state"]
 
+        
+        
+
         # reshape x so that the second dimension corresponds to the original
         # returns (0), states (1), or actions (2); i.e. x[:,1,t] is the token for s_t
         x = x.reshape(batch_size, seq_length, 3, self.hidden_size).permute(0, 2, 1, 3)
+       
 
         # get predictions
         # predict next return given state and action
